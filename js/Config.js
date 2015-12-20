@@ -18,6 +18,8 @@ var glo={
     view:'',
 	map:'',
   	tablaCIE10:'',
+  	listDiagTemp:[],
+  	listDiagNomTemp:[],
   	listDiag:[],
   	listDiagNom:[],
   	Emit:{
@@ -35,9 +37,11 @@ var glo={
 		msEstadoCivil:'',
 		msTipoAtencion:'',
 		Tasas:1,
-		Agrupacion: 1
+		Agrupacion: 1,
+		Multi:100
 		
 	},
+	Numerador:'Personas',
 	socket:'',
 	socketGeoAdmin:'',
 	format : new ol.format.GeoJSON(),
@@ -46,12 +50,39 @@ var glo={
 	highlightStyleCache: {},
 	
 }
+
 Array.prototype.unique = function (a) {
     return function () { return this.filter(a) }
 }(function (a, b, c) {
     return c.indexOf(a, b + 1) < 0
 });
 
+jQuery.fn.DataTable.ext.type.search.string = function ( data ) {
+    return ! data ?
+        '' :
+        typeof data === 'string' ?
+            data
+                .replace( /\n/g, ' ' )
+                .replace( /[áâàä]/g, 'a' )
+                .replace( /[éêèë]/g, 'e' )
+                .replace( /[íîìï]/g, 'i' )
+                .replace( /[óôòö]/g, 'o' )
+                .replace( /[úûùü]/g, 'u' )
+                .replace( /ç/g, 'c' ) :
+            data;
+};
+function toggleCheckbox(element) {
+		var id = element.split('-');
+        var index = $.inArray(id[0], glo.listDiagTemp);
+ 
+        if ( index === -1 ) {
+            glo.listDiagTemp.push( id[0] );
+            glo.listDiagNomTemp.push( id[1] );
+        } else {
+            glo.listDiagTemp.splice( index, 1 );
+            glo.listDiagNomTemp.splice( index, 1 );
+        }
+};
 glo.limiteDPTO=new ol.layer.Tile({
     source: new ol.source.TileWMS(/** @type {olx.source.TileWMSOptions} */ ({
       url: glo.geoserver+'/gwc/service/wms',
@@ -287,9 +318,12 @@ glo.socketGeoAdmin.emit('GetDepartamento', '', function(message){
 });		
 
 glo.ReiniciarJSON=function(json){
-	console.log(json);
+	//console.log(json);
 	for(i=0;i<json.features.length;i++){
 		json.features[i].properties.t=0;
+		json.features[i].properties.pob=-1;
+		json.features[i].properties.tp=-1;
+		
 	}
 }
 function getDatosLugar(result,escala,dato) {
@@ -303,15 +337,18 @@ glo.asigGeometria=function(result,escala){
 	for(i=0;i<glo[escala].features.length;i++){		
 		dato=getDatosLugar(result,escala,glo[escala].features[i].properties.id);
 		if(dato.length!=0){
-			glo[escala].features[i].properties.t=parseInt(dato[0].t);	
+			glo[escala].features[i].properties.t=parseInt(dato[0].t);
+			if(dato[0].pob!=undefined){
+				glo[escala].features[i].properties.pob=parseInt(dato[0].pob);
+				glo[escala].features[i].properties.tp=parseInt(dato[0].tp);
+			}	
 		}
 	}
-	console.log(glo[escala]);
+	//console.log(glo[escala]);
 	return glo[escala];
 };
 glo.getbreaks=function(fc){	
 	var val_mostrar='t',breaks='HI';
-	//console.log(fc);
 	var fcFilter=turf.remove(fc, val_mostrar, 0);
 	console.log(fcFilter);
 	if(fcFilter.features.length>6){
@@ -323,8 +360,8 @@ glo.getbreaks=function(fc){
 	if(breaks[0]!=0){
 		breaks.unshift(0);		
 	}
-	console.log('breaks');
-	console.log(breaks);
+	/*console.log('breaks');
+	console.log(breaks);*/
 	return breaks;    
 };
 glo.AutoDisplayLeyend=function(){
@@ -333,13 +370,8 @@ glo.AutoDisplayLeyend=function(){
 		var labels=[];
 		
 		for(var i=0;i<glo.breaks.length-1;i++){
-			//console.log(glo.breaks[i]);
-			//console.log(getColor(glo.breaks[i]));
 			labels.push('<i  style=" background:'+getColor(glo.breaks[i])+';"></i> '+numeral(glo.breaks[i]).format('0,0')+' - '+numeral(glo.breaks[i+1]-1).format('0,0'));
-			
 		}	
-		//console.log(glo.breaks[glo.breaks.length-1]);
-		//console.log(getColor(glo.breaks[glo.breaks.length-1]));
 		labels.push('<i  style=" background:'+getColor(glo.breaks[glo.breaks.length-1])+';"></i> '+numeral(glo.breaks[glo.breaks.length-1]).format('0,0')+' +');		
 		leyend.style.display='block';
 		leyend.innerHTML=labels.join('<br>')
@@ -352,7 +384,6 @@ glo.AddDiagnoticosPanel=function(){
 	for(var i=0;i<glo.listDiagNom.length;i++){
 		$("#ListDiagnosticoPanel").append(glo.listDiagNom[i]+'<br>');
 		$("#ListDiagnosticoPanel").append('<hr class="hrdiv" width=70% align="left">');
-		
 	}	
 };
 function GetGeojson(){
@@ -521,6 +552,29 @@ $(document).ready(function() {
 			window.location.replace('http://saga.cundinamarca.gov.co/apps/comparativeSaludV2/');
 		}
 	});
+	function setDiagTable(cod,nom){
+		var check='<div id="classck'+cod+'"><div class="checkbox">'+
+				          '<label>'+
+				            '<input type="checkbox" id="ck'+cod+'" value="" checked>'+
+				            '<span class="cr"><i class="cr-icon  glyphicon glyphicon-remove"></i></span>'+
+				            '<span class="small2">'+nom+'</span>'+
+				          '</label>'+
+				        '</div>';
+			$('#listCheck').prepend(check);
+			glo.listDiagNom.push(nom);
+			glo.listDiag.push(cod);
+			$("#ck"+cod).change(function() {
+				$("#classck"+cod).remove();
+				var index = glo.listDiag.indexOf(cod);
+				if (index > -1) {
+				    glo.listDiag.splice(index, 1);
+				    glo.listDiagNom.splice(index, 1);
+				}
+				$("#InpClave").val("").focus();
+			});
+			$("#InpClave").val("").focus();
+	}
+	
  	$("#InpClave").autocomplete({
 	    source: function (request, response) {
 	    	$.ajax({
@@ -534,39 +588,21 @@ $(document).ready(function() {
 		          success: function(data) {
 		          	if(data){
 		          		response($.map(data, function (el) {
-		                return {
-		                    label: el.f2,
-		                    value: el.f2,
-		                    codigo:el.f1.replace(".", ""),
-		                    nombre:el.f2		                
-		                    };
+		          			var index = glo.listDiag.indexOf(el.f1.replace(".", ""));
+							if (index<0) {
+			                	return {
+				                    label: el.f2,
+				                    value: el.f2,
+				                    codigo:el.f1.replace(".", ""),
+				                    nombre:el.f2		                
+			                    };
+			                }
 		            	}));
 		    }}});
 	    },
 	    minLength: 3,
 	    select: function (event, ui) {
-	    	var check='<div id="classck'+ui.item.codigo+'"><div class="checkbox">'+
-				          '<label>'+
-				            '<input type="checkbox" id="ck'+ui.item.codigo+'" value="" checked>'+
-				            '<span class="cr"><i class="cr-icon  glyphicon glyphicon-remove"></i></span>'+
-				            '<span class="small2">'+ui.item.nombre+'</span>'+
-				          '</label>'+
-				        '</div>';
-			$('#listCheck').prepend(check);
-			glo.listDiagNom.push(ui.item.nombre);
-			glo.listDiag.push(ui.item.codigo);
-			$("#ck"+ui.item.codigo).change(function() {
-				$("#classck"+ui.item.codigo).remove();
-				var index = glo.listDiag.indexOf(ui.item.codigo);
-				if (index > -1) {
-				    glo.listDiag.splice(index, 1);
-				    glo.listDiagNom.splice(index, 1);
-				}
-				$("#InpClave").val("").focus();
-			});
-			$("#InpClave").val("").focus();
-	        console.log(glo.listDiag);
-	        console.log(glo.listDiagNom);
+	    	setDiagTable(ui.item.codigo,ui.item.nombre);
 	    },
 	    open: function () {
 	        $(this).removeClass("ui-corner-all").addClass("ui-corner-top");
@@ -593,6 +629,95 @@ $(document).ready(function() {
 		$("#InpClave").val("").focus();
 	});
 	
+	
+	$('#AdicionarDiag').click(function(){
+		waitingDialog.show();
+		glo.socket.emit('GetListDiag',$('#TablaGrupo').val(), function(message){
+			var decrypted =FuncDecrypted(message);
+			
+			var html='',dataSet=[];
+			for(i=0;i<decrypted.length;i++){
+				var index = glo.listDiag.indexOf(decrypted[i].cod.replace(".", ""));
+				if (index<0) {
+					dataSet.push([decrypted[i].cod,decrypted[i].nom,'<div class="checkbox"><label><input type="checkbox"  onchange="toggleCheckbox(\''+
+					decrypted[i].cod.replace(".", "")+'-'+decrypted[i].nom
+					+'\')" ><span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span></label>'])
+			    }			
+			}
+			BootstrapDialog.show({
+				//cssClass: 'login-dialog',
+				size: BootstrapDialog.SIZE_WIDE,
+				closable: true,
+	            closeByBackdrop: false,
+	            closeByKeyboard: false,
+	            title: 'Lista de Diagnosticos',
+	            message: '<table id="TablaSelecDiag" class="table table-striped table-bordered" cellspacing="0" width="100%">'+
+				'</table>',
+				onshown: function (dialogRef) {
+					
+				    $('#TablaSelecDiag').DataTable({
+				    	"aLengthMenu": [[10, 15 ], [10, 15]],
+						"iDisplayLength": 10,
+						"iDisplayStart": 0,
+						"oLanguage": {
+								"sProcessing":     "Procesando...",
+								"sLengthMenu":     "Mostrar _MENU_ registros",
+								"sZeroRecords":    "No se encontraron resultados",
+								"sEmptyTable":     "Ningún dato disponible en esta tabla",
+								"sInfo":           "Mostrando registros del _START_ al _END_ de un total de _TOTAL_ registros<br>",
+								"sInfoEmpty":      "Mostrando registros del 0 al 0 de un total de 0 registros",
+								"sInfoFiltered":   "(filtrado de un total de _MAX_ registros)",
+								"sInfoPostFix":    "",
+								"sSearch":         "Buscar:",
+								"sUrl":            "",
+								"sInfoThousands":  ",",
+								"sLoadingRecords": "Cargando...",
+								"oPaginate": {
+									"sFirst":    "Primero",
+									"sLast":     "Último",
+									"sNext":     "Siguiente",
+									"sPrevious": "Anterior"
+								},
+								"oAria": {
+									"sSortAscending":  ": Activar para ordenar la columna de manera ascendente",
+									"sSortDescending": ": Activar para ordenar la columna de manera descendente"
+								}
+						},
+				    	data: dataSet,
+				        columns: [
+				            { title: "Codigo" },
+				            { title: "Descripcion" },
+				            { title: "Add" }
+				       	],
+					   "deferRender": true
+					});
+				
+					
+					waitingDialog.hide();
+					
+				},
+	            buttons: [{
+	                label: 'Seleccionar',
+	                cssClass: 'btn-primary',
+	                action: function(dialogRef){
+	                 for(var i=0;i<glo.listDiagTemp.length;i++){
+	                 	setDiagTable(glo.listDiagTemp[i],glo.listDiagNomTemp[i]);
+	                 }
+	                 glo.listDiagTemp=[];
+	                 glo.listDiagNomTemp=[];
+	                 dialogRef.close();
+	               }
+	            }, {
+	                label: 'Cancelar',
+	                action: function(dialogRef){
+	                    dialogRef.close();
+	                }
+	            }]
+	        });
+			
+		});
+		
+	});
 	$("#TablaGrupo").change(function(){
 		glo.listDiag=[];
 		glo.listDiagNom=[];
@@ -676,6 +801,19 @@ $(document).ready(function() {
 		$("#BtnMostrarInfo").hide( 200, function() {
 				$("#panelDiagnostico").show(200);
 		});
+	});
+	$('#sltMulti').prop('disabled', 'disabled');
+	$('#MultiGrupo').hide();
+	
+	$("#sltTasas").change(function(){
+		if ($("#sltTasas").val()==2) {
+        	$('#sltMulti').prop('disabled', false);
+        	$('#MultiGrupo').show();
+	    }
+	    else {
+	        $('#sltMulti').prop('disabled', 'disabled');
+	        $('#MultiGrupo').hide();
+	    }
 	});
 	/*
 	 Carga de parametros de perticion al mapa
@@ -781,29 +919,39 @@ $(document).ready(function() {
 		glo.Emit.Agrupacion=$('#sltAgrupacion').val();
 		
 		glo.Emit.Tasas=$('#sltTasas').val();
-		if(glo.Emit.Tasas==1){
-			if(glo.Emit.Agrupacion==1){
-				$("#TituloTasa").empty().append('Total Personas');
-				$("#TituloLeyenda").empty().append('Cantidad Personas');	
-			}else 	if(glo.Emit.Agrupacion==2){
-				$("#TituloTasa").empty().append('Total Registros DIA');	
-				$("#TituloLeyenda").empty().append('Cantidad Registros DIA');	
-			}else 	if(glo.Emit.Agrupacion==3){
-				$("#TituloTasa").empty().append('Total Registros');	
-				$("#TituloLeyenda").empty().append('Cantidad Registros');	
-			}
-			
-		}else if(glo.Emit.Tasas==2){
-			if(glo.Emit.Escala=='cod_mpio'){
-				$("#TituloTasa").empty().append('Tasa por 100.000 Habitantes');
-			}else {
-				$("#TituloTasa").empty().append('Tasa por 1.000.000 Habitantes');
-			}
+		
+		if(glo.Emit.Agrupacion==1){
+			glo.Numerador='Personas';
+			$("#TituloTasa").empty().append('Personas');
+			$("#TituloLeyenda").empty().append('Personas');	
+		}else 	if(glo.Emit.Agrupacion==2){
+			glo.Numerador='Registros';
+			$("#TituloTasa").empty().append('Registros DIA');	
+			$("#TituloLeyenda").empty().append('Registros DIA');	
+		}else 	if(glo.Emit.Agrupacion==3){
+			glo.Numerador='Registros';
+			$("#TituloTasa").empty().append('Registros');	
+			$("#TituloLeyenda").empty().append('Registros');	
 		}
 		
+		glo.Emit.Multi=$('#sltMulti').val();
 		
+		if(glo.Emit.Tasas==2){
+			$("#MultiLeyenda").empty().append(' x '+numeral(glo.Emit.Multi).format('0,0')+'</small>');
+			$("#LeyendaTasa").empty().append('Tasa poblacional <br><small>');
+			$("#TituloTasa").prepend('Tasa poblacional <br><small>');
+			$("#TituloTasa").append(' x '+numeral(glo.Emit.Multi).format('0,0')+'</small>');
+		}else if(glo.Emit.Tasas==1){
+			$("#MultiLeyenda").empty();
+			$("#LeyendaTasa").empty().append('Cantidad ');
+		}
 		
-		
+		/*if(glo.Emit.Escala=='cod_dpto'){
+			$("#TituloTasa").empty().append('Tasa por 1.000.000 Habitantes');
+		}else {
+			$("#TituloTasa").empty().append('Tasa por 100.000 Habitantes');	
+		}*/
+		console.log(glo.Emit);
 		glo.informacion.tooltip('hide');
 		GetGeojson();
 	}
@@ -860,7 +1008,20 @@ glo.displayFeatureValue=function(pixel){
 			return feature;
 	});
 	if(feature){
-		var field_show=feature.get('n')+' <br> Total : '+numeral(feature.get('t')).format('0,0');
+		if(feature.get('tp')!=-1){
+			
+			var field_show='<h5><b>'+feature.get('n')+'</b><br><b>Tasa '+
+				numeral(feature.get('t')).format('0,0')+'</b><br><small><em>'+
+				'x '+numeral(glo.Emit.Multi).format('0,0')+'</em></small></h5>'+
+				'<hr class="hrdiv" width="70%" align="center">'+
+				'<small><em><div>'+glo.Numerador+': '+
+				numeral(feature.get('tp')).format('0,0')+'</div><div>Poblacion: '+
+				numeral(feature.get('pob')).format('0,0')+'</div></em></small>';	
+		}else{
+			var field_show=feature.get('n')+' <br> '+
+				numeral(feature.get('t')).format('0,0')+' '+glo.Numerador;
+		}
+		
 		glo.informacion.attr('data-original-title',field_show).tooltip('hide').tooltip('fixTitle').tooltip('show');
 		glo.remove_features_over(feature);
 	}

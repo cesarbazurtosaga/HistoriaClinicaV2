@@ -403,5 +403,7 @@ p {
   .ol-touch .Zoom-Pais {
     top: 100px;
   }
-
+.login-dialog .modal-dialog {
+            width: 90%;
+        }
 
